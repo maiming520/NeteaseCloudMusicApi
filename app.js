@@ -119,22 +119,40 @@ app.server = app.listen(port, host, () => {
 module.exports = app
 // 代理音频流 (增强版)
 app.get('/song/stream', async (req, res) => {
-    const id = req.query.id;
-    if (!id) {
+    const songId = req.query.id;
+    if (!songId) {
         return res.status(400).json({ error: 'Missing song id' });
     }
-    const audioUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+    // 1. 优先尝试通过你的 API 获取官方外链
+    let audioUrl = null;
     try {
+        const songUrlRes = await fetch(`${API_BASE}/song/url?id=${songId}`);
+        const songUrlData = await songUrlRes.json();
+        if (songUrlData.code === 200 && songUrlData.data && songUrlData.data[0] && songUrlData.data[0].url) {
+            audioUrl = songUrlData.data[0].url;
+        }
+    } catch (err) {
+        console.warn('Failed to fetch song url, using fallback.', err);
+    }
+    // 2. 如果获取失败，使用备用的外链地址
+    if (!audioUrl) {
+        audioUrl = `https://music.163.com/song/media/outer/url?id=${songId}.mp3`;
+    }
+    try {
+        // 发起请求，并携带必要的请求头
         const response = await fetch(audioUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Referer': 'https://music.163.com/'
             }
         });
-        if (!response.ok) throw new Error(`Failed to fetch audio: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch audio, status: ${response.status}`);
+        }
+        // 设置正确的响应头
         res.setHeader('Content-Type', 'audio/mpeg');
         res.setHeader('Cache-Control', 'public, max-age=3600');
-        // 将响应数据作为缓冲区发送
+        // 将获取到的音频数据流式地转发给前端
         const buffer = await response.arrayBuffer();
         res.send(Buffer.from(buffer));
     } catch (err) {
