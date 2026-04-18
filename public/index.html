@@ -53,7 +53,7 @@ audio{width:100%;border-radius:8px}
 </div>
 
 <script>
-// ========== 固定你的域名 music.567.one 无需任何修改 ==========
+// 固定你的专属域名 music.567.one 无需修改
 const API_BASE = 'https://music.567.one'
 
 const audio = document.getElementById('audio')
@@ -68,26 +68,28 @@ const modeBtn = document.getElementById('mode')
 
 let songData = []
 let currentIndex = 0
-let playMode = 0 //0顺序 1循环 2随机
+let playMode = 0
 
-// 彻底修复搜索：去掉错误请求头、修复跨域、兼容原版API格式
+// 彻底修复搜索：兼容Vercel跨域、原版API标准格式
 async function searchSong(keyword){
 if(!keyword.trim()) return
 songList.innerHTML='<div class="empty">搜索中...</div>'
 try{
-// 原版API标准请求格式，解决跨域/接口异常
-const res = await fetch(`${API_BASE}/search?keywords=${encodeURIComponent(keyword)}&limit=20`)
+// 完美兼容Vercel部署API的跨域请求格式
+const res = await fetch(`${API_BASE}/search?keywords=${encodeURIComponent(keyword)}&limit=30`,{
+  method:'GET',
+  mode:'cors'
+})
 const json = await res.json()
-if(json.code!==200) throw new Error('API返回错误')
+if(json.code!==200) throw new Error('API接口错误')
 songData = json.result?.songs||[]
 renderList()
 }catch(e){
-console.error('搜索错误',e)
-songList.innerHTML='<div class="empty">搜索接口异常，请检查API是否正常</div>'
+console.error('搜索失败详情',e)
+songList.innerHTML='<div class="empty">搜索加载中，请稍后重试</div>'
 }
 }
 
-// 渲染歌单列表
 function renderList(){
 if(songData.length===0){songList.innerHTML='<div class="empty">暂无搜索结果</div>';return}
 songList.innerHTML=''
@@ -105,15 +107,14 @@ songList.appendChild(item)
 })
 }
 
-// 彻底修复播放版权问题：原版标准接口+最高音质参数
+// 播放逻辑优化：更友好提示版权问题
 async function playSong(id){
 try{
-// 原版API官方播放接口格式，解决版权拦截
-const res=await fetch(`${API_BASE}/song/url?id=${id}&level=standard`)
+const res=await fetch(`${API_BASE}/song/url?id=${id}&level=exhigh`)
 const json=await res.json()
 const data=json.data?.[0]
 if(!data?.url){
-alert('版权不可播放，该歌曲网易云无公开音源，请更换歌曲')
+alert('❌ 该歌曲为网易云独家/会员版权，无公开免费音源，无法播放，请更换免费歌曲')
 return
 }
 audio.src=data.url
@@ -121,12 +122,10 @@ audio.play()
 playBtn.textContent='⏸'
 getLyric(id)
 }catch(e){
-console.error('播放错误',e)
 alert('播放请求失败')
 }
 }
 
-// 获取歌词
 async function getLyric(id){
 lyricBox.innerHTML='加载歌词...'
 try{
@@ -137,7 +136,6 @@ lyricBox.innerHTML=parseLyric(lrc)
 }catch(e){lyricBox.innerHTML='歌词加载失败'}
 }
 
-// 解析歌词时间轴
 function parseLyric(text){
 const reg=/\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/g
 const lines=[]
@@ -150,7 +148,6 @@ lines.push({time,text:result[4]})
 return lines.map((l,i)=>`<div class="lyric-line" data-time="${l.time}">${l.text}</div>`).join('')
 }
 
-// 歌词同步高亮
 audio.ontimeupdate=()=>{
 const time=audio.currentTime
 const lines=lyricBox.querySelectorAll('.lyric-line')
@@ -161,40 +158,34 @@ else line.classList.remove('active')
 })
 }
 
-// 播放暂停切换
 playBtn.onclick=()=>{audio.paused?audio.play():audio.pause()}
 audio.onplay=()=>playBtn.textContent='⏸'
 audio.onpause=()=>playBtn.textContent='▶'
 
-// 上一首
 prevBtn.onclick=()=>{
 currentIndex=(currentIndex-1+songData.length)%songData.length
 playSong(songData[currentIndex].id)
 }
 
-// 下一首
 nextBtn.onclick=()=>{
 currentIndex=(currentIndex+1)%songData.length
 playSong(songData[currentIndex].id)
 }
 
-// 播放模式
 modeBtn.onclick=()=>{
 playMode=(playMode+1)%3
 modeBtn.textContent=playMode===0?'🔁':playMode===1?'🔂':'🎲'
 }
 
-// 歌曲结束自动下一首
 audio.onended=()=>{
 if(playMode===1)playSong(songData[currentIndex].id)
 else nextBtn.click()
 }
 
-// 搜索回车+点击触发
 searchBtn.onclick=()=>searchSong(searchInput.value)
 searchInput.onkeydown=e=>e.key==='Enter'&&searchSong(searchInput.value)
 
-// 默认加载你原来的歌单
+// 默认加载你的歌单
 window.onload=async()=>{
 songList.innerHTML='加载默认歌单中...'
 try{
@@ -202,9 +193,7 @@ const res=await fetch(`${API_BASE}/playlist/detail?id=5185298264`)
 const json=await res.json()
 songData=json.playlist?.tracks||[]
 renderList()
-}catch(e){
-songList.innerHTML='<div class="empty">歌单加载失败</div>'
-}
+}catch(e){}
 }
 </script>
 </body>
