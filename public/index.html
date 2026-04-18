@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>我的音乐站</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(145deg, #1a1e2a, #0f121c);
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #eef4ff;
+            padding: 20px;
+        }
+        .player-card {
+            max-width: 480px;
+            width: 100%;
+            background: rgba(20, 25, 40, 0.8);
+            backdrop-filter: blur(12px);
+            border-radius: 32px;
+            padding: 24px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .cover {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 24px;
+            background: #2a2f3a;
+            background-size: cover;
+            background-position: center;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+        .song-info {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .song-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .song-artist {
+            font-size: 0.9rem;
+            color: #9aaec5;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 24px;
+        }
+        .ctrl-btn {
+            background: rgba(255,255,255,0.08);
+            border: none;
+            color: white;
+            font-size: 1.6rem;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .ctrl-btn:hover {
+            background: #3b6eff;
+            transform: scale(1.05);
+        }
+        .progress-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.75rem;
+            color: #8ea1bb;
+            margin-bottom: 20px;
+        }
+        .progress-bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .progress-fill {
+            width: 0%;
+            height: 100%;
+            background: #3b6eff;
+            border-radius: 4px;
+        }
+        .playlist {
+            list-style: none;
+            margin-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 16px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .playlist li {
+            padding: 10px;
+            border-radius: 14px;
+            cursor: pointer;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            transition: 0.2s;
+        }
+        .playlist li:hover {
+            background: rgba(255,255,255,0.08);
+        }
+        .playlist li.active {
+            background: rgba(59,110,255,0.2);
+            border-left: 3px solid #3b6eff;
+        }
+        .playlist-cover {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+        .playlist-info {
+            flex: 1;
+        }
+        .playlist-name {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .playlist-artist {
+            font-size: 0.7rem;
+            color: #8a99b0;
+        }
+        audio {
+            display: none;
+        }
+        @media (max-width: 500px) {
+            .player-card { padding: 18px; }
+            .ctrl-btn { width: 48px; height: 48px; font-size: 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="player-card">
+    <div class="cover" id="cover"></div>
+    <div class="song-info">
+        <div class="song-title" id="title">加载中...</div>
+        <div class="song-artist" id="artist"></div>
+    </div>
+    <div class="controls">
+        <button class="ctrl-btn" id="prevBtn">⏮</button>
+        <button class="ctrl-btn" id="playBtn">▶</button>
+        <button class="ctrl-btn" id="nextBtn">⏭</button>
+    </div>
+    <div class="progress-wrap">
+        <span id="currentTime">0:00</span>
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <span id="duration">0:00</span>
+    </div>
+    <div class="playlist" id="playlist"></div>
+</div>
+<audio id="audio"></audio>
+
+<script>
+    const API_BASE = 'https://freemusic-48r6i7qlm-freelancer8.vercel.app';
+    const PLAYLIST_ID = '5185298264';  // 换成你喜欢的歌单ID
+
+    let songs = [];
+    let currentIndex = 0;
+    let isPlaying = false;
+
+    const audio = document.getElementById('audio');
+    const playBtn = document.getElementById('playBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const titleEl = document.getElementById('title');
+    const artistEl = document.getElementById('artist');
+    const coverEl = document.getElementById('cover');
+    const playlistEl = document.getElementById('playlist');
+    const progressFill = document.getElementById('progressFill');
+    const currentTimeSpan = document.getElementById('currentTime');
+    const durationSpan = document.getElementById('duration');
+    const progressBar = document.getElementById('progressBar');
+
+    // 获取歌单
+    async function fetchPlaylist() {
+        try {
+            const res = await fetch(`${API_BASE}/playlist/detail?id=${PLAYLIST_ID}`);
+            const data = await res.json();
+            if (data.code === 200 && data.playlist && data.playlist.tracks) {
+                songs = data.playlist.tracks.map(track => ({
+                    id: track.id,
+                    name: track.name,
+                    artist: track.ar.map(a => a.name).join('/'),
+                    cover: track.al.picUrl,
+                    url: `https://music.163.com/song/media/outer/url?id=${track.id}.mp3`
+                }));
+                renderPlaylist();
+                if (songs.length) loadSong(0);
+            } else {
+                throw new Error('歌单加载失败');
+            }
+        } catch (err) {
+            console.error(err);
+            titleEl.innerText = '加载失败，请检查API';
+        }
+    }
+
+    function renderPlaylist() {
+        playlistEl.innerHTML = '';
+        songs.forEach((song, idx) => {
+            const li = document.createElement('li');
+            li.className = idx === currentIndex ? 'active' : '';
+            li.innerHTML = `
+                <img class="playlist-cover" src="${song.cover}" onerror="this.src='https://picsum.photos/40/40'">
+                <div class="playlist-info">
+                    <div class="playlist-name">${escapeHtml(song.name)}</div>
+                    <div class="playlist-artist">${escapeHtml(song.artist)}</div>
+                </div>
+            `;
+            li.addEventListener('click', () => {
+                loadSong(idx);
+                audio.play();
+            });
+            playlistEl.appendChild(li);
+        });
+    }
+
+    function loadSong(index) {
+        currentIndex = index;
+        const song = songs[currentIndex];
+        audio.src = song.url;
+        audio.load();
+        titleEl.innerText = song.name;
+        artistEl.innerText = song.artist;
+        coverEl.style.backgroundImage = `url(${song.cover})`;
+        document.querySelectorAll('.playlist li').forEach((li, i) => {
+            if (i === currentIndex) li.classList.add('active');
+            else li.classList.remove('active');
+        });
+        updatePlayPauseIcon(false);
+    }
+
+    function updatePlayPauseIcon(playing) {
+        playBtn.innerHTML = playing ? '⏸' : '▶';
+        isPlaying = playing;
+    }
+
+    audio.addEventListener('play', () => updatePlayPauseIcon(true));
+    audio.addEventListener('pause', () => updatePlayPauseIcon(false));
+    audio.addEventListener('timeupdate', () => {
+        if (audio.duration) {
+            const percent = (audio.currentTime / audio.duration) * 100;
+            progressFill.style.width = percent + '%';
+            currentTimeSpan.innerText = formatTime(audio.currentTime);
+            durationSpan.innerText = formatTime(audio.duration);
+        }
+    });
+    audio.addEventListener('ended', () => nextSong());
+
+    progressBar.addEventListener('click', (e) => {
+        const rect = progressBar.getBoundingClientRect();
+        const percent = (e.clientX - rect.left) / rect.width;
+        audio.currentTime = percent * audio.duration;
+    });
+
+    playBtn.addEventListener('click', () => {
+        if (audio.paused) audio.play();
+        else audio.pause();
+    });
+    prevBtn.addEventListener('click', prevSong);
+    nextBtn.addEventListener('click', nextSong);
+
+    function prevSong() {
+        currentIndex = (currentIndex - 1 + songs.length) % songs.length;
+        loadSong(currentIndex);
+        audio.play();
+    }
+    function nextSong() {
+        currentIndex = (currentIndex + 1) % songs.length;
+        loadSong(currentIndex);
+        audio.play();
+    }
+    function formatTime(sec) {
+        if (isNaN(sec)) return '0:00';
+        const mins = Math.floor(sec / 60);
+        const remainSec = Math.floor(sec % 60);
+        return `${mins}:${remainSec < 10 ? '0' : ''}${remainSec}`;
+    }
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, (m) => {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    fetchPlaylist();
+</script>
+</body>
+</html>
