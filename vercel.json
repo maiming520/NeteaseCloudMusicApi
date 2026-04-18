@@ -1,15 +1,13 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "app.js", "use": "@vercel/node" }
-  ],
+  "builds": [{ "src": "app.js", "use": "@vercel/node" }],
   "routes": [
     { "src": "/song/stream", "dest": "/app.js" },
     { "src": "/song/url", "dest": "/app.js" },
     { "src": "/playlist/detail", "dest": "/app.js" },
     { "src": "/search", "dest": "/app.js" },
     { "src": "/song/detail", "dest": "/app.js" },
-    { "src": "/", "dest": "/index.html" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    { "src": "/", "dest": "/app.js" },
+    { "src": "/(.*)", "dest": "/app.js" }
   ]
 }
