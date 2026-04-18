@@ -60,8 +60,7 @@ app.use(express.static(path.join(__dirname, 'public')))
 
 // cache
 app.use(cache('2 minutes', (req, res) => res.statusCode === 200))
-
-// ========== 动态加载所有路由（保持不变） ==========
+// router
 const special = {
   'daily_signin.js': '/daily_signin',
   'fm_trash.js': '/fm_trash',
@@ -110,32 +109,33 @@ fs.readdirSync(path.join(__dirname, 'module'))
     })
   })
 
-// ========== 自定义代理音频流路由（优化版） ==========
-// 注意：此路由必须在动态路由之后定义，以确保不会被覆盖
+// ========== 自定义音频代理路由（优化版） ==========
+// 注意：此路由必须放在所有动态路由之后，确保不会被覆盖
+const port = process.env.PORT || 3000
+const host = process.env.HOST || ''
+
 app.get('/song/stream', async (req, res) => {
-  const id = req.query.id
-  if (!id) {
+  const songId = req.query.id
+  if (!songId) {
     return res.status(400).json({ error: 'Missing song id' })
   }
 
-  // 1. 优先尝试从官方 API 获取真实外链（避免防盗链）
+  // 1. 优先使用项目内置接口获取真实音频地址（最可靠）
   let audioUrl = null
   try {
-    // 调用项目内置的 /song/url 接口（复用现有逻辑）
-    const songUrlRes = await fetch(
-      `http://localhost:${port}/song/url?id=${id}`
-    )
+    // 注意：此处调用本地服务，确保端口一致
+    const songUrlRes = await fetch(`http://localhost:${port}/song/url?id=${songId}`)
     const songUrlData = await songUrlRes.json()
     if (songUrlData.code === 200 && songUrlData.data && songUrlData.data[0] && songUrlData.data[0].url) {
       audioUrl = songUrlData.data[0].url
     }
   } catch (err) {
-    console.warn('获取官方外链失败，使用备用地址', err)
+    console.warn('通过内置接口获取音频地址失败:', err.message)
   }
 
-  // 2. 如果获取失败，使用网易云公开外链（可能被防盗链，但带上 Referer 后有一定几率成功）
+  // 2. 如果内置接口失败，使用备用外链（可能被防盗链，但携带 Referer 后有一定几率成功）
   if (!audioUrl) {
-    audioUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`
+    audioUrl = `https://music.163.com/song/media/outer/url?id=${songId}.mp3`
   }
 
   try {
@@ -160,15 +160,11 @@ app.get('/song/stream', async (req, res) => {
     res.send(Buffer.from(buffer))
   } catch (err) {
     console.error('Stream error:', err)
-    // 返回明确的错误信息，便于前端调试
     res.status(500).json({ error: 'Failed to stream audio', details: err.message })
   }
 })
 
 // ========== 启动服务器 ==========
-const port = process.env.PORT || 3000
-const host = process.env.HOST || ''
-
 app.server = app.listen(port, host, () => {
   console.log(`server running @ http://${host ? host : 'localhost'}:${port}`)
 })
