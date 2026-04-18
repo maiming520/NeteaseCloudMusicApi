@@ -117,31 +117,3 @@ app.server = app.listen(port, host, () => {
 })
 
 module.exports = app
-// 代理音频流
-app.get('/song/stream', async (req, res) => {
-    const id = req.query.id;
-    if (!id) {
-        return res.status(400).json({ error: 'Missing song id' });
-    }
-    try {
-        // 网易云外链地址
-        const audioUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
-        // 使用 fetch 获取音频流（Node 18+ 支持 fetch）
-        const response = await fetch(audioUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to fetch audio: ${response.status}`);
-        }
-        // 设置响应头
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Cache-Control', 'public, max-age=86400'); // 缓存一天
-        // 将音频流管道输出到响应
-        response.body.pipe(res);
-    } catch (err) {
-        console.error('Stream error:', err);
-        res.status(500).json({ error: 'Failed to stream audio' });
-    }
-});
