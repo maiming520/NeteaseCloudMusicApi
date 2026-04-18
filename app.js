@@ -60,7 +60,8 @@ app.use(express.static(path.join(__dirname, 'public')))
 
 // cache
 app.use(cache('2 minutes', (req, res) => res.statusCode === 200))
-// router
+
+// ========== 动态加载所有路由（保持不变） ==========
 const special = {
   'daily_signin.js': '/daily_signin',
   'fm_trash.js': '/fm_trash',
@@ -109,37 +110,67 @@ fs.readdirSync(path.join(__dirname, 'module'))
     })
   })
 
-const port = process.env.PORT || 3000
-const host = process.env.HOST || ''
-
-app.server = app.listen(port, host, () => {
-  console.log(`server running @ http://${host ? host : 'localhost'}:${port}`)
-})
-// 代理音频流
+// ========== 自定义代理音频流路由（优化版） ==========
+// 注意：此路由必须在动态路由之后定义，以确保不会被覆盖
 app.get('/song/stream', async (req, res) => {
-  const id = req.query.id;
+  const id = req.query.id
   if (!id) {
-    return res.status(400).json({ error: 'Missing song id' });
+    return res.status(400).json({ error: 'Missing song id' })
   }
-  // 优先使用 API 获取的官方外链，否则使用备用地址
-  let audioUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+
+  // 1. 优先尝试从官方 API 获取真实外链（避免防盗链）
+  let audioUrl = null
+  try {
+    // 调用项目内置的 /song/url 接口（复用现有逻辑）
+    const songUrlRes = await fetch(
+      `http://localhost:${port}/song/url?id=${id}`
+    )
+    const songUrlData = await songUrlRes.json()
+    if (songUrlData.code === 200 && songUrlData.data && songUrlData.data[0] && songUrlData.data[0].url) {
+      audioUrl = songUrlData.data[0].url
+    }
+  } catch (err) {
+    console.warn('获取官方外链失败，使用备用地址', err)
+  }
+
+  // 2. 如果获取失败，使用网易云公开外链（可能被防盗链，但带上 Referer 后有一定几率成功）
+  if (!audioUrl) {
+    audioUrl = `https://music.163.com/song/media/outer/url?id=${id}.mp3`
+  }
+
   try {
     const response = await fetch(audioUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://music.163.com/'
       }
-    });
+    })
     if (!response.ok) {
-      throw new Error(`Failed to fetch audio: ${response.status}`);
+      throw new Error(`HTTP ${response.status} - ${response.statusText}`)
     }
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    // 检查响应类型是否为音频
+    const contentType = response.headers.get('content-type')
+    if (!contentType || !contentType.includes('audio')) {
+      // 可能返回了 HTML 错误页，说明外链失效
+      throw new Error('Response is not audio')
+    }
+    res.setHeader('Content-Type', 'audio/mpeg')
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    const buffer = await response.arrayBuffer()
+    res.send(Buffer.from(buffer))
   } catch (err) {
-    console.error('Stream error:', err);
-    res.status(500).json({ error: 'Failed to stream audio' });
+    console.error('Stream error:', err)
+    // 返回明确的错误信息，便于前端调试
+    res.status(500).json({ error: 'Failed to stream audio', details: err.message })
   }
-});
+})
+
+// ========== 启动服务器 ==========
+const port = process.env.PORT || 3000
+const host = process.env.HOST || ''
+
+app.server = app.listen(port, host, () => {
+  console.log(`server running @ http://${host ? host : 'localhost'}:${port}`)
+})
+
 module.exports = app
