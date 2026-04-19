@@ -1,3 +1,4 @@
+// app.js 完整代码
 const fs = require('fs')
 const path = require('path')
 const express = require('express')
@@ -109,8 +110,32 @@ fs.readdirSync(path.join(__dirname, 'module'))
     })
   })
 
+// ========== 手动注册完整歌单路由（分页聚合） ==========
+const fullPlaylistDetail = require('./module/full_playlist_detail');
+app.get('/fullplaylist/detail', (req, res) => {
+  let query = Object.assign(
+    {},
+    { cookie: req.cookies },
+    req.query,
+    req.body,
+    req.files,
+  );
+  fullPlaylistDetail(query, request)
+    .then((answer) => {
+      console.log('[OK]', decodeURIComponent(req.originalUrl));
+      res.append('Set-Cookie', answer.cookie);
+      res.status(answer.status).send(answer.body);
+    })
+    .catch((answer) => {
+      console.log('[ERR]', decodeURIComponent(req.originalUrl), {
+        status: answer.status,
+        body: answer.body,
+      });
+      res.status(answer.status).send(answer.body);
+    });
+});
+
 // ========== 自定义音频代理路由（优化版） ==========
-// 注意：此路由必须放在所有动态路由之后，确保不会被覆盖
 const port = process.env.PORT || 3000
 const host = process.env.HOST || ''
 
@@ -123,7 +148,6 @@ app.get('/song/stream', async (req, res) => {
   // 1. 优先使用项目内置接口获取真实音频地址（最可靠）
   let audioUrl = null
   try {
-    // 注意：此处调用本地服务，确保端口一致
     const songUrlRes = await fetch(`http://localhost:${port}/song/url?id=${songId}`)
     const songUrlData = await songUrlRes.json()
     if (songUrlData.code === 200 && songUrlData.data && songUrlData.data[0] && songUrlData.data[0].url) {
@@ -148,10 +172,8 @@ app.get('/song/stream', async (req, res) => {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} - ${response.statusText}`)
     }
-    // 检查响应类型是否为音频
     const contentType = response.headers.get('content-type')
     if (!contentType || !contentType.includes('audio')) {
-      // 可能返回了 HTML 错误页，说明外链失效
       throw new Error('Response is not audio')
     }
     res.setHeader('Content-Type', 'audio/mpeg')
